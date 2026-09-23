@@ -14,22 +14,37 @@ import {
   CreditCard,
   Zap,
   TrendingUp,
-  Key
+  Key,
+  MessageSquare,
+  Send,
+  Phone,
+  Settings,
+  Smartphone
 } from 'lucide-react';
 
 export default function GovernmentDashboard({ schemes, onMintToken, settlementLedger }) {
   const [activeTab, setActiveTab] = useState('schemes');
-  const [showMintModal, setShowMintModal] = useState(false);
-  const [showSchemeModal, setShowSchemeModal] = useState(false);
+  const [showSmsModal, setShowSmsModal] = useState(false);
+  const [showTwilioConfig, setShowTwilioConfig] = useState(false);
+  const [dispatchedSmsData, setDispatchedSmsData] = useState(null);
 
-  // Mint Form State
+  // Twilio Live Carrier Gateway Credentials
+  const [twilioConfig, setTwilioConfig] = useState({
+    account_sid: '',
+    auth_token: '',
+    from_phone: ''
+  });
+
+  // Mint Form State with Phone Number
   const [mintForm, setMintForm] = useState({
     scheme_id: 'scheme_agri_2026',
     beneficiary_id: 'BEN_892104',
+    phone_number: '+919876543210',
     amount: 2500,
     beneficiary_name: 'Ramesh Kumar',
     state_code: 'UP',
-    farmer_category: 'Smallholder'
+    farmer_category: 'Smallholder',
+    send_sms: true
   });
 
   const [createdTokenResult, setCreatedTokenResult] = useState(null);
@@ -39,14 +54,34 @@ export default function GovernmentDashboard({ schemes, onMintToken, settlementLe
     const result = onMintToken({
       scheme_id: mintForm.scheme_id,
       beneficiary_id: mintForm.beneficiary_id,
+      phone_number: mintForm.phone_number,
       amount: parseFloat(mintForm.amount),
+      send_sms: mintForm.send_sms,
+      twilio_sid: twilioConfig.account_sid || null,
+      twilio_token: twilioConfig.auth_token || null,
+      twilio_from: twilioConfig.from_phone || null,
       disclosable_claims: {
         beneficiary_name: mintForm.beneficiary_name,
         state_code: mintForm.state_code,
         farmer_category: mintForm.farmer_category
       }
     });
+    
     setCreatedTokenResult(result);
+
+    if (mintForm.send_sms && mintForm.phone_number) {
+      setDispatchedSmsData({
+        phone_number: mintForm.phone_number,
+        beneficiary_name: mintForm.beneficiary_name,
+        amount: mintForm.amount,
+        scheme_id: mintForm.scheme_id,
+        jti: result.jti,
+        sd_jwt: result.sd_jwt,
+        is_live_twilio: Boolean(twilioConfig.account_sid && twilioConfig.auth_token),
+        sms_text: `Govt of India Welfare Alert: Dear ${mintForm.beneficiary_name}, your subsidy voucher of Rs.${mintForm.amount} for '${mintForm.scheme_id}' is issued!\nVoucher ID: ${result.jti}\nClaim Code: ${result.jti.replace("tok_", "").toUpperCase()}\nToken: ${result.sd_jwt.substring(0, 35)}...\nPresent this at any verified merchant PoS offline.`
+      });
+      setShowSmsModal(true);
+    }
   };
 
   return (
@@ -92,7 +127,7 @@ export default function GovernmentDashboard({ schemes, onMintToken, settlementLe
         </div>
       </div>
 
-      {/* Navigation Sub-Tabs */}
+      {/* Navigation Sub-Tabs & Twilio Live SMS Toggle */}
       <div className="flex items-center justify-between border-b border-slate-800 pb-3">
         <div className="flex items-center gap-3">
           <button
@@ -113,7 +148,7 @@ export default function GovernmentDashboard({ schemes, onMintToken, settlementLe
                 : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
             }`}
           >
-            Issue SD-JWT Tokens
+            Issue SD-JWT Tokens & Live SMS
           </button>
           <button
             onClick={() => setActiveTab('ledger')}
@@ -127,15 +162,72 @@ export default function GovernmentDashboard({ schemes, onMintToken, settlementLe
           </button>
         </div>
 
-        <button
-          onClick={() => setActiveTab('mint')}
-          className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-emerald-500 to-teal-600 text-slate-950 font-bold rounded-xl text-sm hover:brightness-110 shadow-lg shadow-emerald-500/20 transition-all"
-        >
-          <PlusCircle className="w-4 h-4" /> Issue New Token
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowTwilioConfig(!showTwilioConfig)}
+            className="flex items-center gap-1.5 px-3 py-2 bg-slate-900 text-cyan-300 border border-slate-700 rounded-xl text-xs font-semibold hover:border-cyan-500 transition-all"
+          >
+            <Settings className="w-3.5 h-3.5 text-cyan-400" /> Carrier SMS Gateway Settings
+          </button>
+
+          <button
+            onClick={() => setActiveTab('mint')}
+            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-emerald-500 to-teal-600 text-slate-950 font-bold rounded-xl text-sm hover:brightness-110 shadow-lg shadow-emerald-500/20 transition-all"
+          >
+            <PlusCircle className="w-4 h-4" /> Issue New Token
+          </button>
+        </div>
       </div>
 
-      {/* TAB 1: Schemes List & CEL Rule View */}
+      {/* Twilio Carrier Configuration Drawer */}
+      {showTwilioConfig && (
+        <div className="glass-panel p-5 rounded-2xl border border-cyan-500/40 bg-slate-900/90 text-xs space-y-3 animate-in fade-in">
+          <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+            <h4 className="font-bold text-cyan-300 flex items-center gap-2">
+              <MessageSquare className="w-4 h-4 text-cyan-400" /> Configure Real Twilio SMS Carrier Credentials
+            </h4>
+            <span className="text-[10px] text-slate-400">Allows sending real SMS directly to mobile phones</span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label className="block text-slate-400 text-[11px] mb-1">Twilio Account SID</label>
+              <input
+                type="text"
+                placeholder="ACxxxxxxxxxxxxxxxx"
+                value={twilioConfig.account_sid}
+                onChange={(e) => setTwilioConfig({...twilioConfig, account_sid: e.target.value})}
+                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-white font-mono text-xs focus:outline-none focus:border-cyan-500"
+              />
+            </div>
+            <div>
+              <label className="block text-slate-400 text-[11px] mb-1">Twilio Auth Token</label>
+              <input
+                type="password"
+                placeholder="your_auth_token"
+                value={twilioConfig.auth_token}
+                onChange={(e) => setTwilioConfig({...twilioConfig, auth_token: e.target.value})}
+                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-white font-mono text-xs focus:outline-none focus:border-cyan-500"
+              />
+            </div>
+            <div>
+              <label className="block text-slate-400 text-[11px] mb-1">Twilio From Phone Number</label>
+              <input
+                type="text"
+                placeholder="+18005550199"
+                value={twilioConfig.from_phone}
+                onChange={(e) => setTwilioConfig({...twilioConfig, from_phone: e.target.value})}
+                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-white font-mono text-xs focus:outline-none focus:border-cyan-500"
+              />
+            </div>
+          </div>
+          <p className="text-[10px] text-slate-400">
+            ℹ️ If left blank, the app will perform instant carrier SMS simulation preview.
+          </p>
+        </div>
+      )}
+
+      {/* TAB 1: Schemes List */}
       {activeTab === 'schemes' && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {schemes.map((scheme) => (
@@ -154,7 +246,6 @@ export default function GovernmentDashboard({ schemes, onMintToken, settlementLe
                 </div>
               </div>
 
-              {/* CEL Constraint Engine Badge */}
               <div className="mt-5 p-3 rounded-xl bg-slate-900/90 border border-slate-800 font-mono text-xs text-cyan-300">
                 <div className="flex items-center gap-1.5 text-[10px] text-slate-400 font-sans uppercase font-bold tracking-wider mb-1">
                   <FileCode className="w-3.5 h-3.5 text-cyan-400" /> Embedded CEL Rule Policy (RFC 9524)
@@ -162,7 +253,6 @@ export default function GovernmentDashboard({ schemes, onMintToken, settlementLe
                 <p className="break-all">{scheme.cel_policy}</p>
               </div>
 
-              {/* Attributes */}
               <div className="mt-4 grid grid-cols-3 gap-2 pt-4 border-t border-slate-800/80 text-xs">
                 <div>
                   <span className="text-slate-500 block text-[10px] uppercase">Merchant MCC</span>
@@ -182,13 +272,15 @@ export default function GovernmentDashboard({ schemes, onMintToken, settlementLe
         </div>
       )}
 
-      {/* TAB 2: Issue SD-JWT Tokens */}
+      {/* TAB 2: Issue SD-JWT Tokens & Send SMS */}
       {activeTab === 'mint' && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           <div className="lg:col-span-6 glass-panel rounded-2xl p-6 border border-slate-800">
-            <div className="flex items-center gap-2 mb-4">
-              <Key className="w-5 h-5 text-cyan-400" />
-              <h3 className="text-lg font-bold text-white font-heading">Mint Programmable SD-JWT Voucher</h3>
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <Key className="w-5 h-5 text-cyan-400" />
+                <h3 className="text-lg font-bold text-white font-heading">Mint Token & Dispatch Beneficiary SMS</h3>
+              </div>
             </div>
             
             <form onSubmit={handleMintSubmit} className="space-y-4 text-sm">
@@ -223,6 +315,32 @@ export default function GovernmentDashboard({ schemes, onMintToken, settlementLe
                     onChange={(e) => setMintForm({...mintForm, amount: e.target.value})}
                     className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-cyan-500 font-bold text-emerald-400"
                   />
+                </div>
+              </div>
+
+              {/* Beneficiary Mobile Phone Number Input */}
+              <div className="p-3 bg-cyan-950/30 border border-cyan-500/30 rounded-xl">
+                <label className="block text-xs font-bold text-cyan-300 mb-1 flex items-center gap-1.5">
+                  <Phone className="w-3.5 h-3.5 text-cyan-400" /> Beneficiary Mobile Phone Number (Enter your mobile number to test SMS)
+                </label>
+                <input
+                  type="text"
+                  placeholder="+919876543210"
+                  value={mintForm.phone_number}
+                  onChange={(e) => setMintForm({...mintForm, phone_number: e.target.value})}
+                  className="w-full bg-slate-900 border border-cyan-500/40 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-cyan-400 font-mono text-sm"
+                />
+                <div className="flex items-center gap-2 mt-2">
+                  <input
+                    type="checkbox"
+                    id="send_sms_checkbox"
+                    checked={mintForm.send_sms}
+                    onChange={(e) => setMintForm({...mintForm, send_sms: e.target.checked})}
+                    className="accent-cyan-500"
+                  />
+                  <label htmlFor="send_sms_checkbox" className="text-xs text-slate-300 cursor-pointer">
+                    Dispatch live carrier SMS containing voucher ID & claim payload to phone
+                  </label>
                 </div>
               </div>
 
@@ -265,21 +383,28 @@ export default function GovernmentDashboard({ schemes, onMintToken, settlementLe
 
               <button
                 type="submit"
-                className="w-full py-3 bg-cyan-500 text-slate-950 font-bold rounded-xl hover:bg-cyan-400 transition-all shadow-lg shadow-cyan-500/25 flex items-center justify-center gap-2"
+                className="w-full py-3 bg-gradient-to-r from-cyan-500 to-teal-500 text-slate-950 font-bold rounded-xl hover:brightness-110 transition-all shadow-lg shadow-cyan-500/25 flex items-center justify-center gap-2"
               >
-                <ShieldCheck className="w-5 h-5" /> Generate & Sign SD-JWT Voucher
+                <Send className="w-4 h-4" /> Issue SD-JWT Voucher & Dispatch SMS
               </button>
             </form>
           </div>
 
           {/* Token Output Viewer */}
           <div className="lg:col-span-6 glass-panel rounded-2xl p-6 border border-slate-800">
-            <h3 className="text-lg font-bold text-white font-heading mb-4">Cryptographic SD-JWT Token Output</h3>
+            <h3 className="text-lg font-bold text-white font-heading mb-4">Cryptographic SD-JWT Output</h3>
             
             {createdTokenResult ? (
               <div className="space-y-4">
-                <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl flex items-center gap-2 text-xs text-emerald-400">
-                  <CheckCircle2 className="w-4 h-4" /> SD-JWT Token successfully minted & signed with RSA-256 key.
+                <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl flex items-center justify-between text-xs text-emerald-400">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4" /> SD-JWT Token minted & signed with RSA-256 key.
+                  </div>
+                  {mintForm.send_sms && (
+                    <span className="px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 text-[10px] font-bold border border-cyan-500/30">
+                      SMS Sent to {mintForm.phone_number}
+                    </span>
+                  )}
                 </div>
 
                 <div>
@@ -314,7 +439,7 @@ export default function GovernmentDashboard({ schemes, onMintToken, settlementLe
               <div className="h-64 flex flex-col items-center justify-center text-center p-6 border-2 border-dashed border-slate-800 rounded-xl">
                 <Lock className="w-10 h-10 text-slate-600 mb-2" />
                 <p className="text-sm font-semibold text-slate-400">No Token Generated Yet</p>
-                <p className="text-xs text-slate-500 mt-1 max-w-xs">Fill the form on the left to mint an asymmetric SD-JWT token embedded with CEL rules.</p>
+                <p className="text-xs text-slate-500 mt-1 max-w-xs">Fill the form on the left to mint an asymmetric SD-JWT token and dispatch an SMS to your mobile phone.</p>
               </div>
             )}
           </div>
@@ -370,6 +495,60 @@ export default function GovernmentDashboard({ schemes, onMintToken, settlementLe
                 )}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* Dispatched SMS Preview & Live Carrier Delivery Modal */}
+      {showSmsModal && dispatchedSmsData && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="glass-panel p-6 rounded-3xl max-w-md w-full border border-cyan-500/40 shadow-2xl relative space-y-4 animate-in fade-in zoom-in">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2 text-cyan-400 font-bold text-sm">
+                <MessageSquare className="w-5 h-5 text-cyan-400" /> Beneficiary Mobile SMS Dispatched
+              </div>
+              <button 
+                onClick={() => setShowSmsModal(false)}
+                className="text-slate-400 hover:text-white text-xs font-bold px-2 py-1 bg-slate-800 rounded-lg"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="p-3 bg-slate-900 rounded-xl border border-slate-800 text-xs space-y-1">
+              <div className="flex justify-between text-slate-400">
+                <span>To Mobile Number:</span>
+                <span className="font-mono font-bold text-cyan-300">{dispatchedSmsData.phone_number}</span>
+              </div>
+              <div className="flex justify-between text-slate-400">
+                <span>Beneficiary Name:</span>
+                <span className="font-semibold text-white">{dispatchedSmsData.beneficiary_name}</span>
+              </div>
+            </div>
+
+            <div className="bg-slate-900 p-4 rounded-2xl border border-cyan-500/30 font-mono text-xs text-slate-200 space-y-2 relative">
+              <div className="flex items-center justify-between text-[10px] text-cyan-400 font-sans uppercase font-bold">
+                <span>Carrier SMS Content</span>
+                <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300">DISPATCHED</span>
+              </div>
+              <p className="whitespace-pre-line text-emerald-300 text-[11px] leading-relaxed">
+                {dispatchedSmsData.sms_text}
+              </p>
+            </div>
+
+            <div className="p-3 bg-slate-900/90 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1">
+              <p className="font-bold text-cyan-300">📱 Mobile Carrier Delivery Setup:</p>
+              <p className="text-slate-400 leading-snug">
+                To route SMS to your live mobile phone number via Twilio, click <span className="text-cyan-300 font-semibold">"Carrier SMS Gateway Settings"</span> at the top and enter your Twilio Account SID and Auth Token.
+              </p>
+            </div>
+
+            <button
+              onClick={() => setShowSmsModal(false)}
+              className="w-full py-2.5 bg-cyan-500 text-slate-950 font-bold rounded-xl text-xs hover:bg-cyan-400 transition-all"
+            >
+              Acknowledge & Close
+            </button>
           </div>
         </div>
       )}
