@@ -1,165 +1,166 @@
-# Tokify ⚡
+# Tokify
 
-> **Hybrid DPI Orchestration Layer for Selective Disclosure JSON Web Tokens (SD-JWTs)**  
-> Programmable, Privacy-Preserving Welfare Disbursement & Subsidies with Offline Point-of-Sale (PoS) Verification and Instant UPI Settlement.
-
-[![RFC 9524 Compliant](https://img.shields.io/badge/RFC-9524%20SD--JWT-blueviolet.svg)](https://datatracker.ietf.org/doc/html/rfc9524)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Python FastAPI](https://img.shields.io/badge/Backend-FastAPI-009688.svg)](https://fastapi.tiangolo.com)
-[![React Ecosystem](https://img.shields.io/badge/Frontend-React%20%2F%20Vite-61DAFB.svg)](https://react.dev)
+**Hybrid DPI Orchestration Layer for Selective Disclosure JSON Web Tokens (SD-JWTs)**  
+Programmable, Privacy-Preserving Welfare Disbursement and Subsidies with Offline Point-of-Sale (PoS) Verification and Instant UPI Settlement.
 
 ---
 
-## 📌 Executive Summary
+## Executive Summary
 
-Current direct welfare disbursement and subsidy systems suffer from three critical bottlenecks:
-1. **Lack of Programmable Constraints**: Raw fiat transfers (DBT) can be diverted for non-intended purchases (e.g. non-agricultural goods).
-2. **Static Voucher Limitations**: Legacy solutions like **e-RUPI** rely on static, single-use SMS strings lacking dynamic multi-variable rules, fractional spending, geo-fencing, or balance updates.
-3. **The Last-Mile Offline Barrier**: Rural beneficiaries and Fair Price Shops frequently experience cellular network downtime. Online validation bottlenecks block delivery to vulnerable demographics.
+Current direct benefit transfer (DBT) and subsidy disbursement systems face three primary structural bottlenecks:
 
-**Tokify** introduces a **Hybrid DPI (Digital Public Infrastructure) Orchestration Layer** that issues subsidies as cryptographically signed **Selective Disclosure JSON Web Tokens (SD-JWTs, RFC 9524)**. Subsidies carry embedded policy constraints (Common Expression Language - CEL) verified **100% offline** on merchant Point-of-Sale (PoS) devices via **QR Codes** or **Acoustic Data-over-Sound** signals (enabling non-internet feature phones to transact securely).
+1. **Lack of Programmable Constraints**: Traditional direct fiat transfers cannot enforce spending bounds, allowing funds to be diverted from intended categories (such as agricultural inputs or healthcare) to unauthorized purchases.
+2. **Static Voucher Limitations**: Existing solutions such as e-RUPI rely on static, single-use SMS vouchers that lack dynamic multi-variable rules, fractional spending, merchant whitelisting, or geo-fencing capabilities.
+3. **Last-Mile Connectivity Barriers**: Rural beneficiaries and Fair Price Shops regularly encounter cellular network downtime. Centralized online verification bottlenecks prevent delivery of essential welfare services in low-connectivity regions.
+
+**Tokify** introduces a Hybrid Digital Public Infrastructure (DPI) Orchestration Layer. Subsidies are issued as cryptographically signed **Selective Disclosure JSON Web Tokens (SD-JWTs, RFC 9524)** embedded with Common Expression Language (CEL) policy rules. These vouchers can be verified **100% offline** on merchant Point-of-Sale (PoS) hardware via QR Codes or an **Acoustic Data-over-Sound** protocol for feature phones, before undergoing deferred batch settlement over national banking rails (UPI).
 
 ---
 
-## 📐 Architecture & Flowchart
+## Architecture and Workflow
 
 ```mermaid
 flowchart TD
-    subgraph Government ["🏛️ Government Disbursement Agency"]
-        Gov[Scheme Admin] -->|1. Configure Scheme & CEL Policy| Engine[FastAPI Backend]
-        Engine -->|2. Sign RSA-256 SD-JWT| Mint[Mint SD-JWT Voucher]
+    subgraph Government ["Government Disbursement Agency"]
+        Gov[Scheme Administrator] -->|1. Define Scheme & CEL Policy| Engine[FastAPI Backend Engine]
+        Engine -->|2. Asymmetric RSA-256 Sign| Mint[Mint SD-JWT Voucher]
     end
 
-    subgraph Beneficiary ["📱 Beneficiary Wallet (Feature / Smart Phone)"]
-        Mint -->|3. Receive SD-JWT Token| Wallet[Beneficiary Wallet]
+    subgraph Beneficiary ["Beneficiary Presentation Layer"]
+        Mint -->|3. Issue SD-JWT Voucher| Wallet[Beneficiary Mobile / Paper Wallet]
         Wallet -->|Option A: High-Density QR Code| PresentQR[QR Code Display]
-        Wallet -->|Option B: FSK Audio Tone Wave| PresentAudio[Acoustic Data-over-Sound]
+        Wallet -->|Option B: FSK Audio Frequency| PresentAudio[Acoustic Data-over-Sound]
     end
 
-    subgraph MerchantPoS ["🏪 Merchant Point-of-Sale (PoS Device - Offline)"]
-        PresentQR -->|4. Scan / Listen| PoS[PoS Offline Verifier Engine]
-        PresentAudio -->|4. Scan / Listen| PoS
-        PoS -->|5. Cryptographic Signature Check| SigCheck{RSA-256 Valid?}
-        SigCheck -->|Yes| CELEval{CEL Rules Compliant?\nMCC / Geo-fence / Expiry}
-        CELEval -->|Compliant| OfflineApprove[✅ Offline Transaction Approved]
-        OfflineApprove -->|6. Store Local Receipt| LocalQueue[PoS Offline Batch Queue]
+    subgraph MerchantPoS ["Merchant Point-of-Sale (PoS Device - Offline)"]
+        PresentQR -->|4. Receive Token Payload| PoS[PoS Offline Verification Engine]
+        PresentAudio -->|4. Receive Token Payload| PoS
+        PoS -->|5. Cryptographic Signature Check| SigCheck{RSA-256 Signature Valid?}
+        SigCheck -->|Valid| CELEval{CEL Rules Compliant?\nMCC / Geo-fence / Expiry / Balance}
+        CELEval -->|Compliant| OfflineApprove[Offline Transaction Approved]
+        OfflineApprove -->|6. Record Local Receipt| LocalQueue[PoS Offline Batch Queue]
     end
 
-    subgraph SettlementRails ["🏦 Central Banking & Settlement (Online)"]
-        LocalQueue -->|7. Network Restored: Sync Batch| Sync[Batch Settlement API]
+    subgraph SettlementRails ["Central Banking & Settlement Layer (Online)"]
+        LocalQueue -->|7. Network Restored: Submit Batch| Sync[Batch Settlement API]
         Sync -->|8. Sub-Millisecond Rejection Check| Bloom[RedisBloom Guard]
         Bloom -->|Pass| Burn[Fractional Token Burn]
-        Burn -->|9. Instant Fiat Payout| UPI[UPI Banking Rails]
+        Burn -->|9. Instant Fiat Transfer| UPI[UPI Banking Rails]
     end
 ```
 
 ---
 
-## 🔑 Key Technological Innovations
+## Technical Specifications
 
 ### 1. Selective Disclosure (SD-JWT - RFC 9524)
-Unlike traditional JWTs that expose all claims to any verifier, Tokify utilizes salted cryptographic disclosures (`_sd` array with `sha256` digests). Beneficiaries can present proof of eligibility and scheme authorization without revealing underlying sensitive identity or medical data to local merchants.
+Standard JWTs expose all internal claims to any verifier. Tokify implements RFC 9524 salted disclosures (`_sd` array containing SHA-256 digests). Beneficiaries can present proof of subsidy authorization to local merchants without disclosing sensitive personal identity attributes.
 
-### 2. Embedded CEL (Common Expression Language) Policy Engine
-Subsidies carry rich, multi-variable logic executed directly on PoS hardware:
+### 2. Embedded Policy Engine (Common Expression Language)
+Vouchers encode multi-variable policy logic that executes deterministically on PoS hardware without network connectivity:
+
 ```cel
-mcc in ['5261', '5191'] && geo_distance_km(lat, lng, 28.6139, 77.2090) <= 50.0 && amount >= spend_request && now() <= exp
+mcc in ['5261', '5191'] && geo_distance_km(lat, lng, 28.6139, 77.2090) <= 50.0 && spend_request <= remaining_balance && now() <= exp
 ```
-- **Merchant Category Code (MCC) Whitelisting**: Restricts spending exclusively to authorized merchant categories (e.g. fertilizer dealers).
-- **Dynamic Geo-fencing**: Restricts voucher validity to target disaster relief zones or district coordinates.
-- **Time-boxing & Expiration**: Hard expiration enforced down to the second.
+
+- **Merchant Category Code (MCC) Whitelisting**: Restricts redemptions strictly to approved vendor categories.
+- **Geospatial Fencing**: Restricts voucher validity to designated administrative districts or relief zones.
+- **Temporal Constraints**: Enforces hard expiration bounds down to second-level precision.
+- **Fractional Spending**: Tracks cumulative partial redemptions against the token balance.
 
 ### 3. Acoustic Data-over-Sound Protocol
-For millions of rural citizens with standard feature phones (lacking NFC, Bluetooth, or mobile data), Tokify modulates the SD-JWT cryptographic signature into audible Frequency Shift Keying (**FSK**) audio tones. The beneficiary's feature phone micro-speaker plays the tone sequence, which is captured by the merchant PoS microphone for instant offline verification.
+For feature phone users lacking NFC, Bluetooth, or mobile data, Tokify modulates the SD-JWT cryptographic signature into audible Frequency Shift Keying (FSK) audio tones. The feature phone speaker plays the audio sequence, which is captured and decoded by the merchant PoS microphone for offline verification.
 
-### 4. Sub-Millisecond Double-Spend Guard (RedisBloom)
-When PoS devices reconnect to internet coverage and submit deferred transaction batches, Tokify checks token `JTI` + timestamp hashes against a high-throughput **RedisBloom** filter, rejecting duplicate redemptions in sub-milliseconds before triggering UPI settlement.
+### 4. High-Throughput Double-Spend Guard (RedisBloom)
+When PoS devices reconnect to cellular networks and transmit accumulated batch receipts, Tokify validates token identifier (`jti`) and redemption nonces against a **RedisBloom** filter, rejecting duplicate spending attempts in sub-milliseconds prior to executing financial settlement.
 
 ---
 
-## 📊 Comparison Matrix
+## Architecture Comparison
 
-| Feature | NPCI e-RUPI | CBDC / Blockchain | **Tokify (SD-JWT DPI)** |
+| Architectural Dimension | NPCI e-RUPI | Blockchain / CBDC | Tokify (SD-JWT DPI) |
 | :--- | :--- | :--- | :--- |
-| **Programmability** | Single-use static SMS string | Smart contract on-chain | Dynamic CEL multi-variable rules |
-| **Offline Verification** | ❌ Requires Online Telco validation | ❌ High latency / consensus bottleneck | ✅ **100% Offline Cryptographic Verification** |
-| **Feature Phone Support** | Text SMS only | ❌ Requires smartphone | ✅ **Acoustic Data-over-Sound (FSK)** |
-| **Privacy Protection** | Plaintext identity in SMS | Public ledger transparency | ✅ **RFC 9524 Selective Disclosure** |
-| **Fractional Spending** | ❌ All-or-nothing voucher | Variable | ✅ **Fractional balance burning** |
-| **National Scale Rails** | UPI rails | Custom node network | ✅ **Existing Fiat UPI Rails** |
+| **Policy Engine** | Static single-use SMS code | On-chain smart contract | Deterministic CEL policy rules |
+| **Offline Validation** | Requires online Telco authorization | High latency / network dependency | 100% Offline Cryptographic & CEL Verification |
+| **Low-Cost Hardware Support** | SMS Text string only | Requires smartphone & data | Acoustic Data-over-Sound (FSK) & QR Code |
+| **Privacy Model** | Plaintext identity attributes | Public ledger transparency | RFC 9524 Selective Disclosure |
+| **Partial Redemption** | Single-use non-fractional | Fractional balance | Dynamic fractional token burning |
+| **Settlement Interoperability**| Dedicated voucher settlement | Custom node infrastructure | Native integration with UPI fiat rails |
 
 ---
 
-## 💻 Tech Stack
+## Technical Stack
 
-- **Backend**: Python 3.11, FastAPI, PyJWT, Cryptography (RSA-256 / Ed25519), SQLAlchemy, Pytest.
-- **Policy & Double-Spend**: CEL (Common Expression Language), Redis / RedisBloom.
+- **Backend Architecture**: Python 3.11, FastAPI, PyJWT, Cryptography (RSA-256), SQLAlchemy, Pytest.
+- **Policy & Double-Spend Engine**: Common Expression Language (CEL), Redis, RedisBloom.
 - **Frontend Ecosystem**: React 18, Vite, Tailwind CSS, Lucide Icons, Web Audio API.
-- **Containerization**: Docker, Docker Compose, PostgreSQL 16.
+- **Infrastructure & Deployment**: Docker, Docker Compose, PostgreSQL 16.
 
 ---
 
-## ⚡ Quickstart Guide
+## Installation and Setup
 
 ### Prerequisites
-- Python 3.10+
-- Node.js 18+
+- Python 3.10 or higher
+- Node.js 18 or higher
 - Git
 
-### 1. Clone & Setup Repository
+### 1. Repository Setup
 ```bash
 git clone https://github.com/Nabeelop/tokify.git
 cd tokify
 ```
 
-### 2. Run Backend API
+### 2. Backend Service Setup
 ```bash
 cd backend
 python -m venv venv
-# On Windows:
+
+# Windows PowerShell:
 .\venv\Scripts\activate
-# On Linux/macOS:
+
+# Linux / macOS:
 source venv/bin/activate
 
 pip install -r requirements.txt
 python -m uvicorn app.main:app --reload --port 8000
 ```
-- API Docs: `http://localhost:8000/docs`
+Access OpenAPI documentation at `http://localhost:8000/docs`.
 
-### 3. Run Backend Unit Tests
+### 3. Backend Test Suite Execution
 ```bash
 cd backend
 python -m pytest tests
 ```
 
-### 4. Run Frontend Ecosystem
+### 4. Frontend Application Setup
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
-- Open `http://localhost:3000` in browser to launch the Government Dashboard and Merchant PoS App.
+Access the application at `http://localhost:3000`.
 
-### 5. Run with Docker Compose
+### 5. Docker Deployment
 ```bash
 docker-compose up --build
 ```
 
 ---
 
-## 🛣️ API Endpoints Summary
+## Primary API Reference
 
-| Method | Endpoint | Description |
+| HTTP Method | Endpoint | Description |
 | :--- | :--- | :--- |
-| `GET` | `/api/schemes` | List active welfare subsidy programs |
-| `POST` | `/api/schemes` | Create new scheme with CEL policy rules |
-| `POST` | `/api/tokens/mint` | Issue signed SD-JWT token for beneficiary |
-| `POST` | `/api/tokens/verify` | Verify SD-JWT signature & CEL compliance |
-| `POST` | `/api/settlement/batch` | Submit PoS offline transaction batch for UPI settlement |
-| `GET` | `/api/settlement/ledger` | Fetch immutable settlement ledger |
+| `GET` | `/api/schemes` | Retrieve active welfare subsidy programs |
+| `POST` | `/api/schemes` | Create welfare scheme with embedded CEL policy rules |
+| `POST` | `/api/tokens/mint` | Mint signed SD-JWT subsidy voucher and trigger SMS dispatch |
+| `POST` | `/api/tokens/verify` | Verify SD-JWT signature and CEL policy compliance |
+| `POST` | `/api/settlement/batch` | Process offline PoS batch receipts for UPI settlement |
+| `GET` | `/api/settlement/ledger` | Query master settlement ledger |
 
 ---
 
-## 📜 License
+## License
 
-MIT License © 2026 Tokify Project. Built by Nabeel (`Nabeelop`).
+Distributed under the MIT License. Copyright (c) 2026 Tokify Project.
